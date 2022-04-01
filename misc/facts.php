@@ -84,7 +84,7 @@ function ssh_aesni()
 				die ("can't find the sshd binary.");
 			}
 		}		
-		`$SSHD -p 2222 -o ListenAddress=127.0.0.1:2222 -o AuthorizedKeysFile=.ssh/aesni-speedtest.pub -o PidFile=/run/sshd-2222.pid`;
+		`$SSHD -p 2222 -o ListenAddress=127.0.0.1:2222 -o AuthorizedKeysFile=.ssh/aesni-speedtest.pub -o PidFile=/aesni-speedtest/sshd-2222.pid`;
 
 		$timedChipers = array();		
 		foreach ( preg_split ("/\n/", $c) as $chiper ) {
@@ -106,7 +106,7 @@ function ssh_aesni()
 		}
 		
 		asort ( $timedChipers, SORT_NUMERIC);
-		system ("kill `cat /run/sshd-2222.pid`");
+		system ("kill `cat /aesni-speedtest/sshd-2222.pid`");
 		unlink($tmpfname);
 		unlink("$HOME/.ssh/aesni-speedtest.pub");
 		unlink("$HOME/.ssh/aesni-speedtest");
