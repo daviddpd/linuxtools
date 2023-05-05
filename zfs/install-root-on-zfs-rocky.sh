@@ -364,11 +364,7 @@ if [ "x${INST_SYSTEM_TARGET}" == "xVM" ]; then
     echo 'GRUB_CMDLINE_LINUX+=" oops=panic call_trace=both mce=off edd=off"' >> ${ZFS_ROOT_MOUNT}/etc/default/grub  || true
 fi
 
-tee ${ZFS_ROOT_MOUNT}/etc/grub.d/09_fix_root_on_zfs <<EOF
-#!/bin/sh
-echo 'insmod zfs'
-echo 'set root=(hd0,gpt2)'
-EOF
+cp -v ./patches/09_fix_root_on_zfs ${ZFS_ROOT_MOUNT}/etc/grub.d/09_fix_root_on_zfs
 chmod +x ${ZFS_ROOT_MOUNT}/etc/grub.d/09_fix_root_on_zfs
 
 mount -t proc proc ${ZFS_ROOT_MOUNT}/proc || true
@@ -380,119 +376,20 @@ systemctl enable zfs-import-scan.service zfs-import.target zfs-zed zfs.target --
 systemctl disable zfs-mount --root=${ZFS_ROOT_MOUNT}
 
 ## blkid  | grep EFI | awk '{print $6}' | awk -F= '{print $1"="$2" /boot/efi vfat x-systemd.idle-timeout=1min,x-systemd.automount,umask=0022,fmask=0022,dmask=0022 0 1"}' | sed -E 's/"//g'
-tee ${ZFS_ROOT_MOUNT}/root/01-generate-fstab-efi.sh <<EOF
-blkid  | grep EFI | awk '{print $6}' | awk -F= '{print $1"="$2" /boot/efi vfat x-systemd.idle-timeout=1min,x-systemd.automount,noauto,umask=0022,fmask=0022,dmask=0022 0 1"}' | sed -E 's/"//g'
-EOF
+cp ./patches/01-generate-fstab-efi.sh ${ZFS_ROOT_MOUNT}/root/01-generate-fstab-efi.sh 
 chmod +x ${ZFS_ROOT_MOUNT}/root/01-generate-fstab-efi.sh 
 chroot ${ZFS_ROOT_MOUNT} sh -c "sh /root/01-generate-fstab-efi.sh >> /etc/fstab"
 
-tee ${ZFS_ROOT_MOUNT}/etc/dnf/plugins/post-transaction-actions.d/00-update-grub-menu-for-kernel.action <<EOF
-# kernel-core package contains vmlinuz and initramfs
-# change package name if non-standard kernel is used
-kernel-core:in:/usr/local/sbin/update-grub-menu.sh
-kernel-core:out:/usr/local/sbin/update-grub-menu.sh
-EOF
-tee ${ZFS_ROOT_MOUNT}/usr/local/sbin/update-grub-menu.sh <<EOF
-#!/bin/sh
-export PATH=$PATH:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-export ZPOOL_VDEV_NAME_PATH=YES
-source /etc/os-release
-FSLABEL=`grub2-probe -t fs_label /boot/efi`
-if [ "x${FSLABEL}" != "EFI" ]; then
-    mount /boot/efi
-fi
-grub2-mkconfig -o /boot/efi/EFI/${ID}/grub.cfg
-cp /boot/efi/EFI/${ID}/grub.cfg /boot/efi/EFI/${ID}/grub2/grub.cfg
-cp /boot/efi/EFI/${ID}/grub.cfg /boot/grub2/grub.cfg
-EOF
+cp -v ./patches/00-update-grub-menu-for-kernel.action ${ZFS_ROOT_MOUNT}/etc/dnf/plugins/post-transaction-actions.d/00-update-grub-menu-for-kernel.action
+cp -v ./patches/update-grub-menu.sh ${ZFS_ROOT_MOUNT}/usr/local/sbin/update-grub-menu.sh
 chmod +x ${ZFS_ROOT_MOUNT}/usr/local/sbin/update-grub-menu.sh
-
-tee ${ZFS_ROOT_MOUNT}/root/02-setup-grub-efi.sh <<EOF1
-#!/bin/sh
-DISK="$@"
-rm -f /etc/zfs/zpool.cache
-touch /etc/zfs/zpool.cache
-chmod a-w /etc/zfs/zpool.cache
-chattr +i /etc/zfs/zpool.cache
-for directory in /lib/modules/*; do
-  kernel_version=$(basename $directory)
-  dracut --force --kver $kernel_version
-done
-mkdir -p /boot/efi/EFI/rocky        # EFI GRUB dir
-mkdir -p /boot/efi/EFI/rocky/grub2  # legacy GRUB dir
-mkdir -p /boot/grub2
-for i in ${DISK}; do
-  grub2-install --boot-directory /boot/efi/EFI/rocky --target=i386-pc $i
-done
-for i in ${DISK}; do
-  efibootmgr -cgp 1 -l "\EFI\rocky\shimx64.efi" -L "rocky-${i##*/}" -d ${i}
-done
-cp -r /usr/lib/grub/x86_64-efi/ /boot/efi/EFI/rocky
-tee /etc/grub.d/09_fix_root_on_zfs <<EOF
-#!/bin/sh
-echo 'insmod zfs'
-echo 'set root=(hd0,gpt2)'
-EOF
-chmod +x /etc/grub.d/09_fix_root_on_zfs
-
-EOF1
-
+cp -v ./patches/02-setup-grub-efi.sh ${ZFS_ROOT_MOUNT}/root/02-setup-grub-efi.sh 
 chmod +x ${ZFS_ROOT_MOUNT}/root/02-setup-grub-efi.sh
 
-
-#         --- etc/grub.d/10_linux.orig	2022-03-19 04:56:57.255011134 +0000
-#         +++ etc/grub.d/10_linux	2022-03-19 05:04:12.982762360 +0000
-#         @@ -77,6 +77,9 @@
-#                  fi;;
-#              xzfs)
-#                  rpool=`${grub_probe} --device ${GRUB_DEVICE} --target=fs_label 2>/dev/null || true`
-#         +        if [ -z "${rpool}" ]; then
-#         +                rpool=`zdb -l ${GRUB_DEVICE} | grep -E '[[:blank:]]name'   | cut -d\' -f 2 || true`
-#         +        fi
-#                  bootfs="`make_system_path_relative_to_its_root / | sed -e "s,@$,,"`"
-#                  LINUX_ROOT_DEVICE="ZFS=${rpool}${bootfs}"
-#                  ;;
-#         @@ -181,7 +181,6 @@
-#             ${grub_editenv} - set kernelopts="root=${linux_root_device_thisversion} ro ${args}"
-#              fi
-# 
-#         -    exit 0
-#            fi
-# 
-#            if [ x$type != xsimple ] ; then
-
-
-tee ${ZFS_ROOT_MOUNT}/root/10_linux.patch <<EOF2
---- etc/grub.d/10_linux.orig	2022-03-19 04:56:57.255011134 +0000
-+++ etc/grub.d/10_linux	2022-03-19 05:04:12.982762360 +0000
-@@ -77,6 +77,9 @@
-         fi;;
-     xzfs)
-         rpool=`${grub_probe} --device ${GRUB_DEVICE} --target=fs_label 2>/dev/null || true`
-+        if [ -z "${rpool}" ]; then
-+                rpool=`zdb -l ${GRUB_DEVICE} | grep -E '[[:blank:]]name'   | cut -d\' -f 2 || true`
-+        fi
-         bootfs="`make_system_path_relative_to_its_root / | sed -e "s,@$,,"`"
-         LINUX_ROOT_DEVICE="ZFS=${rpool}${bootfs}"
-         ;;
-@@ -181,7 +181,6 @@
- 	${grub_editenv} - set kernelopts="root=${linux_root_device_thisversion} ro ${args}"
-     fi
-
--    exit 0
-   fi
-
-   if [ x$type != xsimple ] ; then
-
-EOF2
-
+cp -v ./patches/10_linux.patch ${ZFS_ROOT_MOUNT}/root/10_linux.patch
 patch -F 10 -i ${ZFS_ROOT_MOUNT}/root/10_linux.patch ${ZFS_ROOT_MOUNT}/etc/grub.d/10_linux
 rm -f ${ZFS_ROOT_MOUNT}/etc/grub.d/10_linux.*
 
-# FSLABEL=`grub2-probe -t fs_label ${ZFS_ROOT_MOUNT}/boot/efi`
-# if [ "x${FSLABEL}" != "EFI" ]; then
-#     mount ${ZFS_ROOT_MOUNT}/boot/efi
-# fi
 chroot ${ZFS_ROOT_MOUNT} sh -c "/root/02-setup-grub-efi.sh ${DISK}"
 chroot ${ZFS_ROOT_MOUNT} sh -c "env ZPOOL_VDEV_NAME_PATH=1 grub2-mkconfig -o /boot/efi/EFI/rocky/grub.cfg"
 cp -f ${ZFS_ROOT_MOUNT}/boot/efi/EFI/rocky/grub.cfg ${ZFS_ROOT_MOUNT}/boot/efi/EFI/rocky/grub2/grub.cfg

@@ -1,0 +1,4 @@
+# kernel-core package contains vmlinuz and initramfs
+# change package name if non-standard kernel is used
+kernel-core:in:/usr/local/sbin/update-grub-menu.sh
+kernel-core:out:/usr/local/sbin/update-grub-menu.sh

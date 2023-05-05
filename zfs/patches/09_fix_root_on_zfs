@@ -1,0 +1,3 @@
+#!/bin/sh
+echo 'insmod zfs'
+echo 'set root=(hd0,gpt2)'

@@ -1,0 +1,20 @@
+--- etc/grub.d/10_linux.orig	2022-03-19 04:56:57.255011134 +0000
++++ etc/grub.d/10_linux	2022-03-19 05:04:12.982762360 +0000
+@@ -77,6 +77,9 @@
+         fi;;
+     xzfs)
+         rpool=`${grub_probe} --device ${GRUB_DEVICE} --target=fs_label 2>/dev/null || true`
++        if [ -z "${rpool}" ]; then
++                rpool=`zdb -l ${GRUB_DEVICE} | grep -E '[[:blank:]]name'   | cut -d\' -f 2 || true`
++        fi
+         bootfs="`make_system_path_relative_to_its_root / | sed -e "s,@$,,"`"
+         LINUX_ROOT_DEVICE="ZFS=${rpool}${bootfs}"
+         ;;
+@@ -181,7 +181,6 @@
+ 	${grub_editenv} - set kernelopts="root=${linux_root_device_thisversion} ro ${args}"
+     fi
+
+-    exit 0
+   fi
+
+   if [ x$type != xsimple ] ; then
