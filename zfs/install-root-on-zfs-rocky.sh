@@ -29,7 +29,7 @@ set -x
 #
 # WHY: The live filesystem seem to have too little free space to install zfs, I tried to
 #      reroll it, but failed to get something working.  Ideally, if ZFS is included in the
-#      installer, this can be adapted not a kickstart file instead of stand alone script.
+#      installer, this can be adapted into a kickstart file instead of stand alone script.
 #  
 
 # This was created to be use for XCP-NG Xen VMs, running on a single
@@ -40,7 +40,6 @@ set -x
 . /etc/os-release
 : ${INST_RHEL_VER:=`rpm -E '%{rhel}'`}
 : ${INST_ID=${ID}}
-
 : ${INST_SYSTEM_TARGET:="VM"}  # Do if = VM
 
 # Usage:  
@@ -50,8 +49,8 @@ set -x
 # so going to use old fashion blk device specs, and linux sytle 
 # partition numbers : eg xvdb1, xvdb2, xvdb3, ... 
 # Script changes below will be required to move it
-    : ${DISK:="/dev/xvdb"}
-    : ${INST_PRIMARY_DISK='/dev/xvdb'}
+: ${DISK:="/dev/xvdb"}
+: ${INST_PRIMARY_DISK:='/dev/xvdb'}
 
 if [ -z "${DISK}" -o -z "${INST_PRIMARY_DISK}" ]; then
     echo "You need to configure DISK and INST_PRIMARY_DISK";
@@ -61,7 +60,7 @@ fi
 # CONFIGURE
 #   if you have a need to change the mount point for the zfs file system
 #   while building the system
-    : ${ZFS_ROOT_MOUNT:="/mnt"}
+: ${ZFS_ROOT_MOUNT:="/el8zfs"}
 
 # CONFIGURE: 
 #    Your partition sizes, and if you want a swap partition 
@@ -83,6 +82,7 @@ fi
 : ${INST_BOOT_POOL_NAME:="b"}       # Using "b" instead of "bpool"
 : ${INST_BOOT_CONATINER:="BOOT"}    # 
 : ${INST_BOOT_POOL_TYPE:=""}        # Top level "VDEV", er, "raid" type:  'null|mirror|raidz|raidz1|raidz2|raidz3'
+: ${ZFS_ASHIFT:=12}                 # set ashift to 12(4k);  9(512bytes)
 
 # CONFIGURE: 
 #   UUIDs are used in the docs. 
@@ -104,6 +104,18 @@ fi
 
 # FIXME: Hook to use instead of Anaconda, needs to be implemented
 : ${INST_INSTALL_SCRIPT:=""}
+
+: ${DIR:="/z/dist"}
+: ${DISTRO:="rocky"}
+: ${VERSION:=8}
+: ${SNAP:="2023Q2"}
+: ${BUILD:="v1"}
+: ${DISTDIR:="${DIR}/${DISTRO}/${VERSION}/${SNAP}"}
+
+ROCKYRELEASE_GLOB="${DISTDIR}/rpms/baseos/Packages/r/rocky-release*"
+ROCKYRELEASE=`ls -1 "${ROCKYRELEASE_GLOB}" | sed -e 's/.*rocky-release-//g' | awk -F\- '{print $1}' | sed -e 's/\.//g'`
+TARBALL="${DISTDIR}/${DISTRO}-${ROCKYRELEASE}-${SNAP}-${BUILD}.tgz"
+
 
 #
 ##
@@ -170,7 +182,7 @@ done
 /sbin/modprobe zfs
       
 zpool create -f \
-    -o ashift=12 \
+    -o ashift=${ZFS_ASHIFT} \
     -o autotrim=on \
     -R ${ZFS_ROOT_MOUNT} \
     -O acltype=posixacl \
@@ -209,7 +221,7 @@ zpool create -f \
 -o feature@large_blocks=enabled \
 -o feature@lz4_compress=enabled \
 -o feature@spacemap_histogram=enabled \
-    -o ashift=12 \
+    -o ashift=${ZFS_ASHIFT} \
     -o autotrim=on \
     -O acltype=posixacl \
     -O canmount=off \
@@ -328,7 +340,8 @@ if [ -n "${USE_ANACONDA}" ]; then
     # Anaconda is doing something to the zpool, and holding the pool open after everything is unmounted 
     # to work-around this, install to a TMPFS, then move the files over to the zpool/zfs
     if [ -n "${USE_ANACONDA_TMPFS}" ]; then 
-        tar -C ${USE_ANACONDA_TMPFS} --ignore-command-error --xattrs -cf - . | tar -C ${ZFS_ROOT_MOUNT} --ignore-command-error --xattrs -xf -
+        tar -C ${USE_ANACONDA_TMPFS} --ignore-command-error --xattrs -zcf ${TARBALL}
+        tar -C ${ZFS_ROOT_MOUNT} --ignore-command-error --xattrs -xf ${TARBALL}
         umount ${USE_ANACONDA_TMPFS}
     fi
     
@@ -356,23 +369,20 @@ tee ${ZFS_ROOT_MOUNT}/etc/grub.d/09_fix_root_on_zfs <<EOF
 echo 'insmod zfs'
 echo 'set root=(hd0,gpt2)'
 EOF
-chmod +x ${ZFS_ROOT_MOUNT}/etc/grub.d/09_fix_root_on_zfs    
-
+chmod +x ${ZFS_ROOT_MOUNT}/etc/grub.d/09_fix_root_on_zfs
 
 mount -t proc proc ${ZFS_ROOT_MOUNT}/proc || true
 mount -t sysfs sysfs ${ZFS_ROOT_MOUNT}/sys || true
 mount -t devtmpfs devtmpfs ${ZFS_ROOT_MOUNT}/dev || true
 
-
 chroot ${ZFS_ROOT_MOUNT} sh -c "/sbin/modprobe zfs"
 systemctl enable zfs-import-scan.service zfs-import.target zfs-zed zfs.target --root=${ZFS_ROOT_MOUNT}
 systemctl disable zfs-mount --root=${ZFS_ROOT_MOUNT}
 
-## This line, base64 encoded, because I didn't want to with escaping ... 
 ## blkid  | grep EFI | awk '{print $6}' | awk -F= '{print $1"="$2" /boot/efi vfat x-systemd.idle-timeout=1min,x-systemd.automount,umask=0022,fmask=0022,dmask=0022 0 1"}' | sed -E 's/"//g'
-echo 'YmxraWQgIHwgZ3JlcCBFRkkgfCBhd2sgJ3twcmludCAkNn0nIHwgYXdrIC1GPSAne3ByaW50ICQxIj0iJDIiIC9ib290L2VmaSB2ZmF0IHgtc3lzdGVtZC5pZGxlLXRpbWVvdXQ9MW1pbix4LXN5c3RlbWQuYXV0b21vdW50LG5vYXV0byx1bWFzaz0wMDIyLGZtYXNrPTAwMjIsZG1hc2s9MDAyMiAwIDEifScgfCBzZWQgLUUgJ3MvIi8vZycK' \
-    | base64 -d \
-    > ${ZFS_ROOT_MOUNT}/root/01-generate-fstab-efi.sh 
+tee ${ZFS_ROOT_MOUNT}/root/01-generate-fstab-efi.sh <<EOF
+blkid  | grep EFI | awk '{print $6}' | awk -F= '{print $1"="$2" /boot/efi vfat x-systemd.idle-timeout=1min,x-systemd.automount,noauto,umask=0022,fmask=0022,dmask=0022 0 1"}' | sed -E 's/"//g'
+EOF
 chmod +x ${ZFS_ROOT_MOUNT}/root/01-generate-fstab-efi.sh 
 chroot ${ZFS_ROOT_MOUNT} sh -c "sh /root/01-generate-fstab-efi.sh >> /etc/fstab"
 
@@ -397,58 +407,36 @@ cp /boot/efi/EFI/${ID}/grub.cfg /boot/grub2/grub.cfg
 EOF
 chmod +x ${ZFS_ROOT_MOUNT}/usr/local/sbin/update-grub-menu.sh
 
-
-
-#         #!/bin/sh
-#         DISK="$@"
-#         rm -f /etc/zfs/zpool.cache
-#         touch /etc/zfs/zpool.cache
-#         chmod a-w /etc/zfs/zpool.cache
-#         chattr +i /etc/zfs/zpool.cache
-#         for directory in /lib/modules/*; do
-#           kernel_version=$(basename $directory)
-#           dracut --force --kver $kernel_version
-#         done
-#         mkdir -p /boot/efi/EFI/rocky        # EFI GRUB dir
-#         mkdir -p /boot/efi/EFI/rocky/grub2  # legacy GRUB dir
-#         mkdir -p /boot/grub2
-#         for i in ${DISK}; do
-#           grub2-install --boot-directory /boot/efi/EFI/rocky --target=i386-pc $i
-#         done
-#         for i in ${DISK}; do
-#           efibootmgr -cgp 1 -l "\EFI\rocky\shimx64.efi" -L "rocky-${i##*/}" -d ${i}
-#         done
-#         cp -r /usr/lib/grub/x86_64-efi/ /boot/efi/EFI/rocky
-#         tee /etc/grub.d/09_fix_root_on_zfs <<EOF
-#         #!/bin/sh
-#         echo 'insmod zfs'
-#         echo 'set root=(hd0,gpt2)'
-#         EOF
-#         chmod +x /etc/grub.d/09_fix_root_on_zfs
-
-tee ${ZFS_ROOT_MOUNT}/root/02-setup-grub-efi.sh.b64 <<EOF1
-IyEvYmluL3NoCkRJU0s9IiRAIgpybSAtZiAvZXRjL3pmcy96cG9vbC5jYWNo
-ZQp0b3VjaCAvZXRjL3pmcy96cG9vbC5jYWNoZQpjaG1vZCBhLXcgL2V0Yy96
-ZnMvenBvb2wuY2FjaGUKY2hhdHRyICtpIC9ldGMvemZzL3pwb29sLmNhY2hl
-CmZvciBkaXJlY3RvcnkgaW4gL2xpYi9tb2R1bGVzLyo7IGRvCiAga2VybmVs
-X3ZlcnNpb249JChiYXNlbmFtZSAkZGlyZWN0b3J5KQogIGRyYWN1dCAtLWZv
-cmNlIC0ta3ZlciAka2VybmVsX3ZlcnNpb24KZG9uZQpta2RpciAtcCAvYm9v
-dC9lZmkvRUZJL3JvY2t5ICAgICAgICAjIEVGSSBHUlVCIGRpcgpta2RpciAt
-cCAvYm9vdC9lZmkvRUZJL3JvY2t5L2dydWIyICAjIGxlZ2FjeSBHUlVCIGRp
-cgpta2RpciAtcCAvYm9vdC9ncnViMgpmb3IgaSBpbiAke0RJU0t9OyBkbwog
-IGdydWIyLWluc3RhbGwgLS1ib290LWRpcmVjdG9yeSAvYm9vdC9lZmkvRUZJ
-L3JvY2t5IC0tdGFyZ2V0PWkzODYtcGMgJGkKZG9uZQpmb3IgaSBpbiAke0RJ
-U0t9OyBkbwogIGVmaWJvb3RtZ3IgLWNncCAxIC1sICJcRUZJXHJvY2t5XHNo
-aW14NjQuZWZpIiAtTCAicm9ja3ktJHtpIyMqL30iIC1kICR7aX0KZG9uZQpj
-cCAtciAvdXNyL2xpYi9ncnViL3g4Nl82NC1lZmkvIC9ib290L2VmaS9FRkkv
-cm9ja3kKdGVlIC9ldGMvZ3J1Yi5kLzA5X2ZpeF9yb290X29uX3pmcyA8PEVP
-RgojIS9iaW4vc2gKZWNobyAnaW5zbW9kIHpmcycKZWNobyAnc2V0IHJvb3Q9
-KGhkMCxncHQyKScKRU9GCmNobW9kICt4IC9ldGMvZ3J1Yi5kLzA5X2ZpeF9y
-b290X29uX3pmcwoK
+tee ${ZFS_ROOT_MOUNT}/root/02-setup-grub-efi.sh <<EOF1
+#!/bin/sh
+DISK="$@"
+rm -f /etc/zfs/zpool.cache
+touch /etc/zfs/zpool.cache
+chmod a-w /etc/zfs/zpool.cache
+chattr +i /etc/zfs/zpool.cache
+for directory in /lib/modules/*; do
+  kernel_version=$(basename $directory)
+  dracut --force --kver $kernel_version
+done
+mkdir -p /boot/efi/EFI/rocky        # EFI GRUB dir
+mkdir -p /boot/efi/EFI/rocky/grub2  # legacy GRUB dir
+mkdir -p /boot/grub2
+for i in ${DISK}; do
+  grub2-install --boot-directory /boot/efi/EFI/rocky --target=i386-pc $i
+done
+for i in ${DISK}; do
+  efibootmgr -cgp 1 -l "\EFI\rocky\shimx64.efi" -L "rocky-${i##*/}" -d ${i}
+done
+cp -r /usr/lib/grub/x86_64-efi/ /boot/efi/EFI/rocky
+tee /etc/grub.d/09_fix_root_on_zfs <<EOF
+#!/bin/sh
+echo 'insmod zfs'
+echo 'set root=(hd0,gpt2)'
+EOF
+chmod +x /etc/grub.d/09_fix_root_on_zfs
 
 EOF1
 
-base64 -d ${ZFS_ROOT_MOUNT}/root/02-setup-grub-efi.sh.b64 > ${ZFS_ROOT_MOUNT}/root/02-setup-grub-efi.sh
 chmod +x ${ZFS_ROOT_MOUNT}/root/02-setup-grub-efi.sh
 
 
@@ -464,23 +452,40 @@ chmod +x ${ZFS_ROOT_MOUNT}/root/02-setup-grub-efi.sh
 #                  bootfs="`make_system_path_relative_to_its_root / | sed -e "s,@$,,"`"
 #                  LINUX_ROOT_DEVICE="ZFS=${rpool}${bootfs}"
 #                  ;;
+#         @@ -181,7 +181,6 @@
+#             ${grub_editenv} - set kernelopts="root=${linux_root_device_thisversion} ro ${args}"
+#              fi
+# 
+#         -    exit 0
+#            fi
+# 
+#            if [ x$type != xsimple ] ; then
 
 
-tee ${ZFS_ROOT_MOUNT}/root/10_linux.patch.b64 <<EOF2
-LS0tIGV0Yy9ncnViLmQvMTBfbGludXgub3JpZwkyMDIyLTAzLTE5IDA0OjU2OjU3LjI1NTAxMTEz
-NCArMDAwMAorKysgZXRjL2dydWIuZC8xMF9saW51eAkyMDIyLTAzLTE5IDA1OjA0OjEyLjk4Mjc2
-MjM2MCArMDAwMApAQCAtNzcsNiArNzcsOSBAQAogICAgICAgICBmaTs7CiAgICAgeHpmcykKICAg
-ICAgICAgcnBvb2w9YCR7Z3J1Yl9wcm9iZX0gLS1kZXZpY2UgJHtHUlVCX0RFVklDRX0gLS10YXJn
-ZXQ9ZnNfbGFiZWwgMj4vZGV2L251bGwgfHwgdHJ1ZWAKKyAgICAgICAgaWYgWyAteiAiJHtycG9v
-bH0iIF07IHRoZW4KKyAgICAgICAgICAgICAgICBycG9vbD1gemRiIC1sICR7R1JVQl9ERVZJQ0V9
-IHwgZ3JlcCAtRSAnW1s6Ymxhbms6XV1uYW1lJyAgIHwgY3V0IC1kXCcgLWYgMiB8fCB0cnVlYAor
-ICAgICAgICBmaQogICAgICAgICBib290ZnM9ImBtYWtlX3N5c3RlbV9wYXRoX3JlbGF0aXZlX3Rv
-X2l0c19yb290IC8gfCBzZWQgLWUgInMsQCQsLCJgIgogICAgICAgICBMSU5VWF9ST09UX0RFVklD
-RT0iWkZTPSR7cnBvb2x9JHtib290ZnN9IgogICAgICAgICA7Owo=
+tee ${ZFS_ROOT_MOUNT}/root/10_linux.patch <<EOF2
+--- etc/grub.d/10_linux.orig	2022-03-19 04:56:57.255011134 +0000
++++ etc/grub.d/10_linux	2022-03-19 05:04:12.982762360 +0000
+@@ -77,6 +77,9 @@
+         fi;;
+     xzfs)
+         rpool=`${grub_probe} --device ${GRUB_DEVICE} --target=fs_label 2>/dev/null || true`
++        if [ -z "${rpool}" ]; then
++                rpool=`zdb -l ${GRUB_DEVICE} | grep -E '[[:blank:]]name'   | cut -d\' -f 2 || true`
++        fi
+         bootfs="`make_system_path_relative_to_its_root / | sed -e "s,@$,,"`"
+         LINUX_ROOT_DEVICE="ZFS=${rpool}${bootfs}"
+         ;;
+@@ -181,7 +181,6 @@
+ 	${grub_editenv} - set kernelopts="root=${linux_root_device_thisversion} ro ${args}"
+     fi
+
+-    exit 0
+   fi
+
+   if [ x$type != xsimple ] ; then
 
 EOF2
 
-base64 -d  ${ZFS_ROOT_MOUNT}/root/10_linux.patch.b64 > ${ZFS_ROOT_MOUNT}/root/10_linux.patch
 patch -F 10 -i ${ZFS_ROOT_MOUNT}/root/10_linux.patch ${ZFS_ROOT_MOUNT}/etc/grub.d/10_linux
 rm -f ${ZFS_ROOT_MOUNT}/etc/grub.d/10_linux.*
 
@@ -502,5 +507,7 @@ done
 umount ${ZFS_ROOT_MOUNT}/boot/efi
 zfs umount ${bootPrefix}/default
 zfs umount -a
+zpool export ${INST_ROOT_POOL_NAME}
+zpool export ${INST_BOOT_POOL_NAME}
 
 
