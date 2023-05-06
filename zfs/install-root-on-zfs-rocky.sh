@@ -2,7 +2,7 @@
 # Copyright (c) 2022 David P. Discher 
 # Release into public domain.
 
-set -x
+set -xe
 
 # Rocky Linux 8 Root on ZFS
 # Based on the documentation at 
@@ -93,7 +93,8 @@ fi
 # Use anaconda to installe, with the kickstart file
 # DEPENDANCIES: Ensure the dependancies are included with the Kickstart set of packages.
 : ${USE_ANACONDA:="YES"}
-: ${USE_ANACONDA_KSFILE:="inst.ks"}
+# NOTE: KickStart files needs to be absolute path, otherwise Anaconda can't find it.
+: ${USE_ANACONDA_KSFILE:="/z/dist/tftp/care2-rocky8-2023Q2-zfs.ks"}
 : ${USE_ANACONDA_TMPFS:="/INSTALL"}
 
 # FIXME: well, this check doesn't work if this is http/https.
@@ -107,13 +108,13 @@ fi
 
 : ${DIR:="/z/dist"}
 : ${DISTRO:="rocky"}
-: ${VERSION:=8}
+: ${VERSION_MAJOR:=8}
 : ${SNAP:="2023Q2"}
 : ${BUILD:="v1"}
-: ${DISTDIR:="${DIR}/${DISTRO}/${VERSION}/${SNAP}"}
+: ${DISTDIR:="${DIR}/${DISTRO}/${VERSION_MAJOR}/${SNAP}"}
 
 ROCKYRELEASE_GLOB="${DISTDIR}/rpms/baseos/Packages/r/rocky-release*"
-ROCKYRELEASE=`ls -1 "${ROCKYRELEASE_GLOB}" | sed -e 's/.*rocky-release-//g' | awk -F\- '{print $1}' | sed -e 's/\.//g'`
+ROCKYRELEASE=`ls -1 ${ROCKYRELEASE_GLOB} | sed -e 's/.*rocky-release-//g' | awk -F\- '{print $1}' | sed -e 's/\.//g'`
 TARBALL="${DISTDIR}/${DISTRO}-${ROCKYRELEASE}-${SNAP}-${BUILD}.tgz"
 
 
@@ -157,6 +158,13 @@ esac
 #     blkdiscard $i &
 # done
 # wait
+
+zpool import -R ${ZFS_ROOT_MOUNT} ${INST_ROOT_POOL_NAME} || true 
+zpool import -R ${ZFS_ROOT_MOUNT} ${INST_BOOT_POOL_NAME} || true 
+zfs umount -a || true 
+df | grep ${ZFS_ROOT_MOUNT} | awk '{print $6}' | sort -r | xargs -I % sudo umount %
+zpool destroy -f ${INST_BOOT_POOL_NAME} || true 
+zpool destroy -f ${INST_ROOT_POOL_NAME} || true 
 
 for i in ${DISK}; do
     sgdisk --zap-all $i
@@ -298,11 +306,11 @@ do
     zfs set compression=gzip-9 ${dataPrefix}/${i}
 done
 
-zfs umount ${bootPrefix}/default
+zfs umount ${bootPrefix}/default || true
 zfs umount -a || true
 zfs umount -a || true
-zfs mount ${rootPrefix}/default
-zfs mount ${bootPrefix}/default
+zfs mount ${rootPrefix}/default 
+zfs mount ${bootPrefix}/default 
 zfs mount -a
 
 # FIXME: This is needed with multiple disks, but since that
@@ -340,7 +348,7 @@ if [ -n "${USE_ANACONDA}" ]; then
     # Anaconda is doing something to the zpool, and holding the pool open after everything is unmounted 
     # to work-around this, install to a TMPFS, then move the files over to the zpool/zfs
     if [ -n "${USE_ANACONDA_TMPFS}" ]; then 
-        tar -C ${USE_ANACONDA_TMPFS} --ignore-command-error --xattrs -zcf ${TARBALL}
+        tar -C ${USE_ANACONDA_TMPFS} --ignore-command-error --xattrs -zcf ${TARBALL} .
         tar -C ${ZFS_ROOT_MOUNT} --ignore-command-error --xattrs -xf ${TARBALL}
         umount ${USE_ANACONDA_TMPFS}
     fi
