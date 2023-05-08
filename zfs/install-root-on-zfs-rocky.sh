@@ -96,6 +96,7 @@ fi
 # NOTE: KickStart files needs to be absolute path, otherwise Anaconda can't find it.
 : ${USE_ANACONDA_KSFILE:="/z/dist/tftp/care2-rocky8-2023Q2-zfs.ks"}
 : ${USE_ANACONDA_TMPFS:="/INSTALL"}
+: ${USE_RELEASE_TMPFS:="/R"}
 
 # FIXME: well, this check doesn't work if this is http/https.
 if [ -z "${USE_ANACONDA_KSFILE}" -o ! -f "${USE_ANACONDA_KSFILE}" ]; then
@@ -115,7 +116,7 @@ fi
 
 ROCKYRELEASE_GLOB="${DISTDIR}/rpms/baseos/Packages/r/rocky-release*"
 ROCKYRELEASE=`ls -1 ${ROCKYRELEASE_GLOB} | sed -e 's/.*rocky-release-//g' | awk -F\- '{print $1}' | sed -e 's/\.//g'`
-TARBALL="${DISTDIR}/${DISTRO}-${ROCKYRELEASE}-${SNAP}-${BUILD}.tgz"
+TARBALL="${DISTRO}-${ROCKYRELEASE}-${SNAP}-${BUILD}.tgz"
 
 
 #
@@ -340,17 +341,23 @@ if [ -n "${USE_ANACONDA}" ]; then
     _DIRINSTALL="${ZFS_ROOT_MOUNT}"
     if [ -n "${USE_ANACONDA_TMPFS}" ]; then 
         _DIRINSTALL="${USE_ANACONDA_TMPFS}"
-        mkdir -p "${USE_ANACONDA_TMPFS}"
+        umount ${USE_ANACONDA_TMPFS} || true 
+        umount ${USE_RELEASE_TMPFS} || true 
+        mkdir -p "${USE_ANACONDA_TMPFS}" || true
+        mkdir -p "${USE_RELEASE_TMPFS}" || true
         mount -t tmpfs tmpfs "${USE_ANACONDA_TMPFS}"
+        mount -t tmpfs tmpfs "${USE_RELEASE_TMPFS}"
     fi
     # Run Annacoda to do the install (why totally re-invite the wheel, right?
     echo | anaconda --text --cmdline --kickstart ${USE_ANACONDA_KSFILE}  --gpt  --dirinstall ${_DIRINSTALL}
     # Anaconda is doing something to the zpool, and holding the pool open after everything is unmounted 
     # to work-around this, install to a TMPFS, then move the files over to the zpool/zfs
     if [ -n "${USE_ANACONDA_TMPFS}" ]; then 
-        tar -C ${USE_ANACONDA_TMPFS} --ignore-command-error --xattrs -zcf ${TARBALL} .
-        tar -C ${ZFS_ROOT_MOUNT} --ignore-command-error --xattrs -xf ${TARBALL}
-        umount ${USE_ANACONDA_TMPFS}
+        
+        tar -C ${USE_ANACONDA_TMPFS} --ignore-command-error --xattrs -zcf ${USE_RELEASE_TMPFS}/${TARBALL} .
+        cp -v ${USE_RELEASE_TMPFS}/${TARBALL} ${DISTDIR}/${TARBALL} &
+        tar -C ${ZFS_ROOT_MOUNT} --ignore-command-error --xattrs -xf ${USE_RELEASE_TMPFS}/${TARBALL}
+        # umount ${USE_ANACONDA_TMPFS}
     fi
     
 elif [ -n "${INST_INSTALL_SCRIPT}" ]; then
@@ -361,6 +368,10 @@ else
     echo "Error($0): No software install will be done"
     exit 1
 fi
+
+mount -t proc proc ${ZFS_ROOT_MOUNT}/proc || true
+mount -t sysfs sysfs ${ZFS_ROOT_MOUNT}/sys || true
+mount -t devtmpfs devtmpfs ${ZFS_ROOT_MOUNT}/dev || true
 
 
 echo 'add_dracutmodules+=" zfs "' > ${ZFS_ROOT_MOUNT}/etc/dracut.conf.d/zfs.conf || true
@@ -375,18 +386,18 @@ fi
 cp -v ./patches/09_fix_root_on_zfs ${ZFS_ROOT_MOUNT}/etc/grub.d/09_fix_root_on_zfs
 chmod +x ${ZFS_ROOT_MOUNT}/etc/grub.d/09_fix_root_on_zfs
 
-mount -t proc proc ${ZFS_ROOT_MOUNT}/proc || true
-mount -t sysfs sysfs ${ZFS_ROOT_MOUNT}/sys || true
-mount -t devtmpfs devtmpfs ${ZFS_ROOT_MOUNT}/dev || true
 
 chroot ${ZFS_ROOT_MOUNT} sh -c "/sbin/modprobe zfs"
 systemctl enable zfs-import-scan.service zfs-import.target zfs-zed zfs.target --root=${ZFS_ROOT_MOUNT}
 systemctl disable zfs-mount --root=${ZFS_ROOT_MOUNT}
 
 ## blkid  | grep EFI | awk '{print $6}' | awk -F= '{print $1"="$2" /boot/efi vfat x-systemd.idle-timeout=1min,x-systemd.automount,umask=0022,fmask=0022,dmask=0022 0 1"}' | sed -E 's/"//g'
+# UUID=3df02bf3-b61b-401f-995d-841dd207b22b /boot                   xfs     defaults        0 0
+
+
 cp ./patches/01-generate-fstab-efi.sh ${ZFS_ROOT_MOUNT}/root/01-generate-fstab-efi.sh 
 chmod +x ${ZFS_ROOT_MOUNT}/root/01-generate-fstab-efi.sh 
-chroot ${ZFS_ROOT_MOUNT} sh -c "sh /root/01-generate-fstab-efi.sh >> /etc/fstab"
+chroot ${ZFS_ROOT_MOUNT} sh -c "sh /root/01-generate-fstab-efi.sh ${INST_PRIMARY_DISK}2 ${INST_PRIMARY_DISK}1 ${INST_PRIMARY_DISK}3 >> /etc/fstab"
 
 cp -v ./patches/00-update-grub-menu-for-kernel.action ${ZFS_ROOT_MOUNT}/etc/dnf/plugins/post-transaction-actions.d/00-update-grub-menu-for-kernel.action
 cp -v ./patches/update-grub-menu.sh ${ZFS_ROOT_MOUNT}/usr/local/sbin/update-grub-menu.sh
@@ -403,16 +414,16 @@ chroot ${ZFS_ROOT_MOUNT} sh -c "env ZPOOL_VDEV_NAME_PATH=1 grub2-mkconfig -o /bo
 cp -f ${ZFS_ROOT_MOUNT}/boot/efi/EFI/rocky/grub.cfg ${ZFS_ROOT_MOUNT}/boot/efi/EFI/rocky/grub2/grub.cfg
 cp -f ${ZFS_ROOT_MOUNT}/boot/efi/EFI/rocky/grub.cfg ${ZFS_ROOT_MOUNT}/boot/grub2/grub.cfg
 
-umount ${ZFS_ROOT_MOUNT}/proc
-umount ${ZFS_ROOT_MOUNT}/sys
-umount ${ZFS_ROOT_MOUNT}/dev
+umount ${ZFS_ROOT_MOUNT}/proc || true
+umount ${ZFS_ROOT_MOUNT}/sys  || true
+umount ${ZFS_ROOT_MOUNT}/dev  || true
 for i in ${DISK}; do
-    umount ${ZFS_ROOT_MOUNT}/boot/efis/${i}1
+    umount ${ZFS_ROOT_MOUNT}/boot/efis/${i}1 || true
 done
-umount ${ZFS_ROOT_MOUNT}/boot/efi
-zfs umount ${bootPrefix}/default
-zfs umount -a
-zpool export ${INST_ROOT_POOL_NAME}
-zpool export ${INST_BOOT_POOL_NAME}
+umount ${ZFS_ROOT_MOUNT}/boot/efi || true
+zfs umount ${bootPrefix}/default || true
+zfs umount -a || true
+zpool export ${INST_ROOT_POOL_NAME} || true
+zpool export ${INST_BOOT_POOL_NAME} || true
 
 
