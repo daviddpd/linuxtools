@@ -32,7 +32,7 @@ fi
 if [ -n "${BOOTDEV}" ]; then
         x=$(check "${BOOTDEV}" "PARTUUID")
         if [ -n "$x" ]; then
-                echo $x | awk -F= '{print $1"="$2" /boot /boot                   xfs     defaults        0 0"}' | sed -E 's/"//g'
+                echo $x | awk -F= '{print $1"="$2" /boot                   xfs     defaults        0 0"}' | sed -E 's/"//g'
         fi
 fi
 

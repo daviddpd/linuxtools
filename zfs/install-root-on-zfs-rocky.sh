@@ -397,7 +397,7 @@ systemctl disable zfs-mount --root=${ZFS_ROOT_MOUNT}
 
 cp ./patches/01-generate-fstab-efi.sh ${ZFS_ROOT_MOUNT}/root/01-generate-fstab-efi.sh 
 chmod +x ${ZFS_ROOT_MOUNT}/root/01-generate-fstab-efi.sh 
-chroot ${ZFS_ROOT_MOUNT} sh -c "sh /root/01-generate-fstab-efi.sh ${INST_PRIMARY_DISK}2 ${INST_PRIMARY_DISK}1 ${INST_PRIMARY_DISK}3 >> /etc/fstab"
+chroot ${ZFS_ROOT_MOUNT} sh -c "sh /root/01-generate-fstab-efi.sh ${INST_PRIMARY_DISK}1 >> /etc/fstab"
 
 cp -v ./patches/00-update-grub-menu-for-kernel.action ${ZFS_ROOT_MOUNT}/etc/dnf/plugins/post-transaction-actions.d/00-update-grub-menu-for-kernel.action
 cp -v ./patches/update-grub-menu.sh ${ZFS_ROOT_MOUNT}/usr/local/sbin/update-grub-menu.sh
