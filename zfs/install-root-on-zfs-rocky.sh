@@ -130,7 +130,7 @@ if [ ! -d "${DISTDIR}" ]; then
 fi
 
 ROCKYRELEASE_GLOB="${DISTDIR}/rpms/baseos/Packages/r/rocky-release*"
-ROCKYRELEASE=`ls -1 ${ROCKYRELEASE_GLOB} | sed -e 's/.*rocky-release-//g' | awk -F\- '{print $1}' | sed -e 's/\.//g'`
+ROCKYRELEASE=`ls -1 ${ROCKYRELEASE_GLOB} | sed -e 's/.*rocky-release-//g' | awk -F\- '{print $1}' | sed -e 's/\.//g' | head -1`
 TARBALL="${DISTRO}-${ROCKYRELEASE}-${SNAP}-v${BUILD}.tgz"
 
 while [ -f "${DISTDIR}/${TARBALL}" ]; do
