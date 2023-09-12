@@ -134,7 +134,7 @@ ROCKYRELEASE=`ls -1 ${ROCKYRELEASE_GLOB} | sed -e 's/.*rocky-release-//g' | awk 
 TARBALL="${DISTRO}-${ROCKYRELEASE}-${SNAP}-v${BUILD}.tgz"
 
 while [ -f "${DISTDIR}/${TARBALL}" ]; do
-    BUILD=$((BUILD+1)
+    BUILD=$((BUILD+1))
     TARBALL="${DISTRO}-${ROCKYRELEASE}-${SNAP}-v${BUILD}.tgz"
 done
 
