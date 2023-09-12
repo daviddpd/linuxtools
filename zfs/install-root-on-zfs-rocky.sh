@@ -107,16 +107,36 @@ fi
 # FIXME: Hook to use instead of Anaconda, needs to be implemented
 : ${INST_INSTALL_SCRIPT:=""}
 
+if [ -f "/etc/os-release" ]; then
+    . /etc/os-release
+    : ${DISTRO:="${ID}"}
+    major=`echo "${VERSION_ID}" | awk -F. '{print $1}'`
+    : ${VERSION_MAJOR:="${major}"}
+fi
+
 : ${DIR:="/z/dist"}
-: ${DISTRO:="rocky"}
-: ${VERSION_MAJOR:=8}
-: ${SNAP:="2023Q2"}
-: ${BUILD:="v1"}
+: ${SNAP:=}
+: ${BUILD:=1}
 : ${DISTDIR:="${DIR}/${DISTRO}/${VERSION_MAJOR}/${SNAP}"}
+
+if [ -z "${SNAP}" ]; then
+    echo "SNAP not set, please set as env : ${SNAP}"
+    exit 1;
+fi
+
+if [ ! -d "${DISTDIR}" ]; then
+    echo "Can't find DISTDIR : ${DISTDIR}"
+    exit 1;
+fi
 
 ROCKYRELEASE_GLOB="${DISTDIR}/rpms/baseos/Packages/r/rocky-release*"
 ROCKYRELEASE=`ls -1 ${ROCKYRELEASE_GLOB} | sed -e 's/.*rocky-release-//g' | awk -F\- '{print $1}' | sed -e 's/\.//g'`
-TARBALL="${DISTRO}-${ROCKYRELEASE}-${SNAP}-${BUILD}.tgz"
+TARBALL="${DISTRO}-${ROCKYRELEASE}-${SNAP}-v${BUILD}.tgz"
+
+while [ -f "${DISTDIR}/${TARBALL}" ]; do
+    BUILD=$((BUILD+1)
+    TARBALL="${DISTRO}-${ROCKYRELEASE}-${SNAP}-v${BUILD}.tgz"
+done
 
 
 #
