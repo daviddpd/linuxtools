@@ -94,7 +94,7 @@ fi
 # DEPENDANCIES: Ensure the dependancies are included with the Kickstart set of packages.
 : ${USE_ANACONDA:="YES"}
 # NOTE: KickStart files needs to be absolute path, otherwise Anaconda can't find it.
-: ${USE_ANACONDA_KSFILE:="/z/dist/tftp/care2-rocky8-2023Q2-zfs.ks"}
+: ${USE_ANACONDA_KSFILE:="inst.ks"}
 : ${USE_ANACONDA_TMPFS:="/INSTALL"}
 : ${USE_RELEASE_TMPFS:="/R"}
 
