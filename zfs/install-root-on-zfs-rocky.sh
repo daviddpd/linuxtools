@@ -208,6 +208,7 @@ done
 ### Per OpenZFS doc; diffs changed: mountpoint & top VDEV spec
 ###
 #############################      
+
 /sbin/modprobe zfs
       
 zpool create -f \
@@ -330,6 +331,16 @@ done
 zfs umount ${bootPrefix}/default || true
 zfs umount -a || true
 zfs umount -a || true
+
+
+zpoort ${INST_ROOT_POOL_NAME}${INST_UUID}
+
+zpool set multihost=on  z
+zpool set multihost=off z
+zpool set multihost=on  b
+zpool set multihost=off b
+
+
 zfs mount ${rootPrefix}/default 
 zfs mount ${bootPrefix}/default 
 zfs mount -a
@@ -411,9 +422,33 @@ chroot ${ZFS_ROOT_MOUNT} sh -c "/sbin/modprobe zfs"
 systemctl enable zfs-import-scan.service zfs-import.target zfs-zed zfs.target --root=${ZFS_ROOT_MOUNT}
 systemctl disable zfs-mount --root=${ZFS_ROOT_MOUNT}
 
+## This an attempt to fix hostid mismatch when using this as a template for 
+## VM cloning.
+#
+#         status: Mismatch between pool hostid and system hostid on imported pool.
+#             This pool was previously imported into a system with a different hostid,
+#             and then was verbatim imported into this system.
+#         action: Export this pool on all systems on which it is imported.
+#             Then import it to correct the mismatch.
+
+if [ -f "/etc/hostid" ]; then 
+    mv /etc/hostid /etc/hostid.buildhost
+fi 
+rm -f ${ZFS_ROOT_MOUNT}/etc/hostid || true
+chroot ${ZFS_ROOT_MOUNT} sh -c /sbin/zgenhostid
+cp ${ZFS_ROOT_MOUNT}/etc/hostid
+zpool export ${INST_ROOT_POOL_NAME} || true
+zpool export ${INST_BOOT_POOL_NAME} || true
+zpool import -f -R ${ZFS_ROOT_MOUNT} ${INST_ROOT_POOL_NAME} || true 
+zpool import -f -R ${ZFS_ROOT_MOUNT} ${INST_BOOT_POOL_NAME} || true 
+if [ -f "/etc/hostid.buildhost" ]; then 
+    mv /etc/hostid.buildhost /etc/hostid
+else 
+    rm -f /etc/hostid || true
+fi
+
 ## blkid  | grep EFI | awk '{print $6}' | awk -F= '{print $1"="$2" /boot/efi vfat x-systemd.idle-timeout=1min,x-systemd.automount,umask=0022,fmask=0022,dmask=0022 0 1"}' | sed -E 's/"//g'
 # UUID=3df02bf3-b61b-401f-995d-841dd207b22b /boot                   xfs     defaults        0 0
-
 
 cp ./patches/01-generate-fstab-efi.sh ${ZFS_ROOT_MOUNT}/root/01-generate-fstab-efi.sh 
 chmod +x ${ZFS_ROOT_MOUNT}/root/01-generate-fstab-efi.sh 
@@ -445,5 +480,3 @@ zfs umount ${bootPrefix}/default || true
 zfs umount -a || true
 zpool export ${INST_ROOT_POOL_NAME} || true
 zpool export ${INST_BOOT_POOL_NAME} || true
-
-
