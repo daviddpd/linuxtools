@@ -332,10 +332,6 @@ zfs umount ${bootPrefix}/default || true
 zfs umount -a || true
 zfs umount -a || true
 
-zpool set multihost=on  z
-zpool set multihost=off z
-zpool set multihost=on  b
-zpool set multihost=off b
 
 zfs mount ${rootPrefix}/default 
 zfs mount ${bootPrefix}/default 
@@ -433,6 +429,12 @@ fi
 rm -f ${ZFS_ROOT_MOUNT}/etc/hostid || true
 chroot ${ZFS_ROOT_MOUNT} sh -c /sbin/zgenhostid
 cp ${ZFS_ROOT_MOUNT}/etc/hostid /etc/hostid
+
+zpool set multihost=on  z
+zpool set multihost=off z
+zpool set multihost=on  b
+zpool set multihost=off b
+
 zpool export ${INST_ROOT_POOL_NAME} || true
 zpool export ${INST_BOOT_POOL_NAME} || true
 zpool import -f -R ${ZFS_ROOT_MOUNT} ${INST_ROOT_POOL_NAME} || true 
