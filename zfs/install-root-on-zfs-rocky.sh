@@ -332,14 +332,10 @@ zfs umount ${bootPrefix}/default || true
 zfs umount -a || true
 zfs umount -a || true
 
-
-zpoort ${INST_ROOT_POOL_NAME}${INST_UUID}
-
 zpool set multihost=on  z
 zpool set multihost=off z
 zpool set multihost=on  b
 zpool set multihost=off b
-
 
 zfs mount ${rootPrefix}/default 
 zfs mount ${bootPrefix}/default 
