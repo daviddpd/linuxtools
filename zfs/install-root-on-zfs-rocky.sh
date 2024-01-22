@@ -436,7 +436,7 @@ if [ -f "/etc/hostid" ]; then
 fi 
 rm -f ${ZFS_ROOT_MOUNT}/etc/hostid || true
 chroot ${ZFS_ROOT_MOUNT} sh -c /sbin/zgenhostid
-cp ${ZFS_ROOT_MOUNT}/etc/hostid
+cp ${ZFS_ROOT_MOUNT}/etc/hostid /etc/hostid
 zpool export ${INST_ROOT_POOL_NAME} || true
 zpool export ${INST_BOOT_POOL_NAME} || true
 zpool import -f -R ${ZFS_ROOT_MOUNT} ${INST_ROOT_POOL_NAME} || true 
