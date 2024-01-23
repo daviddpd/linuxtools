@@ -460,6 +460,9 @@ cp -v ./patches/10_linux.patch ${ZFS_ROOT_MOUNT}/root/10_linux.patch
 patch -F 10 -i ${ZFS_ROOT_MOUNT}/root/10_linux.patch ${ZFS_ROOT_MOUNT}/etc/grub.d/10_linux
 rm -f ${ZFS_ROOT_MOUNT}/etc/grub.d/10_linux.*
 
+df || true
+ls -l /var/tmp || true
+
 chroot ${ZFS_ROOT_MOUNT} sh -c "/root/02-setup-grub-efi.sh ${DISK}"
 chroot ${ZFS_ROOT_MOUNT} sh -c "env ZPOOL_VDEV_NAME_PATH=1 grub2-mkconfig -o /boot/efi/EFI/rocky/grub.cfg"
 cp -f ${ZFS_ROOT_MOUNT}/boot/efi/EFI/rocky/grub.cfg ${ZFS_ROOT_MOUNT}/boot/efi/EFI/rocky/grub2/grub.cfg
