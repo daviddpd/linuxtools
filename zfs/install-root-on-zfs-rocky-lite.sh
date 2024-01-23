@@ -438,8 +438,8 @@ zpool set multihost=off z
 zpool set multihost=on  b
 zpool set multihost=off b
 
-zpool export ${INST_ROOT_POOL_NAME} || true
 zpool export ${INST_BOOT_POOL_NAME} || true
+zpool export ${INST_ROOT_POOL_NAME} || true
 zpool import -f -R ${ZFS_ROOT_MOUNT} ${INST_ROOT_POOL_NAME} || true 
 zpool import -f -R ${ZFS_ROOT_MOUNT} ${INST_BOOT_POOL_NAME} || true 
 
@@ -476,8 +476,8 @@ umount ${ZFS_ROOT_MOUNT}/boot/efi || true
 zfs umount ${bootPrefix}/default || true
 zfs umount -a || true
 
-zpool export ${INST_ROOT_POOL_NAME} || true
 zpool export ${INST_BOOT_POOL_NAME} || true
+zpool export ${INST_ROOT_POOL_NAME} || true
 
 if [ -f "/etc/hostid.buildhost" ]; then 
     mv /etc/hostid.buildhost /etc/hostid
