@@ -438,10 +438,12 @@ zpool set multihost=off z
 zpool set multihost=on  b
 zpool set multihost=off b
 
-zpool export ${INST_BOOT_POOL_NAME} || true
-zpool export ${INST_ROOT_POOL_NAME} || true
-zpool import -f -R ${ZFS_ROOT_MOUNT} ${INST_ROOT_POOL_NAME} || true 
-zpool import -f -R ${ZFS_ROOT_MOUNT} ${INST_BOOT_POOL_NAME} || true 
+zfs mount -a
+
+# zpool export ${INST_BOOT_POOL_NAME} || true
+# zpool export ${INST_ROOT_POOL_NAME} || true
+# zpool import -f -R ${ZFS_ROOT_MOUNT} ${INST_ROOT_POOL_NAME} || true 
+# zpool import -f -R ${ZFS_ROOT_MOUNT} ${INST_BOOT_POOL_NAME} || true 
 
 ## blkid  | grep EFI | awk '{print $6}' | awk -F= '{print $1"="$2" /boot/efi vfat x-systemd.idle-timeout=1min,x-systemd.automount,umask=0022,fmask=0022,dmask=0022 0 1"}' | sed -E 's/"//g'
 # UUID=3df02bf3-b61b-401f-995d-841dd207b22b /boot                   xfs     defaults        0 0
@@ -461,7 +463,7 @@ patch -F 10 -i ${ZFS_ROOT_MOUNT}/root/10_linux.patch ${ZFS_ROOT_MOUNT}/etc/grub.
 rm -f ${ZFS_ROOT_MOUNT}/etc/grub.d/10_linux.*
 
 df || true
-ls -l /var/tmp || true
+ls -l ${ZFS_ROOT_MOUNT}/var/tmp || true
 
 chroot ${ZFS_ROOT_MOUNT} sh -c "/root/02-setup-grub-efi.sh ${DISK}"
 chroot ${ZFS_ROOT_MOUNT} sh -c "env ZPOOL_VDEV_NAME_PATH=1 grub2-mkconfig -o /boot/efi/EFI/rocky/grub.cfg"
